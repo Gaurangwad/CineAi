@@ -41,22 +41,15 @@ export function ChatInterface() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([])
-  const [history, setHistory] = useState<MoodHistoryEntry[]>([])
-  const [taste, setTaste] = useState<TasteProfile | null>(null)
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>(() => getWatchlist())
+  const [history, setHistory] = useState<MoodHistoryEntry[]>(() => getHistory())
+  const [taste, setTaste] = useState<TasteProfile | null>(() => getTasteProfile())
 
   const [watchlistOpen, setWatchlistOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const tar = useRef<HTMLTextAreaElement>(null)
-
-  // Hydrate persisted state on mount.
-  useEffect(() => {
-    setWatchlist(getWatchlist())
-    setHistory(getHistory())
-    setTaste(getTasteProfile())
-  }, [])
 
   // Auto-scroll to newest message.
   useEffect(() => {
