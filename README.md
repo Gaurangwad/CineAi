@@ -3,7 +3,7 @@
 > An emotionally intelligent AI that recommends movies based on your mood, situation, and soul.
 
 ![Cine AI](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
-![Anthropic](https://img.shields.io/badge/Claude-Sonnet-orange?style=flat-square)
+![Groq](https://img.shields.io/badge/Groq-Llama_3.3_70B-f55036?style=flat-square)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?style=flat-square&logo=typescript)
 ![Tailwind](https://img.shields.io/badge/Tailwind-3-38bdf8?style=flat-square&logo=tailwindcss)
 
@@ -20,6 +20,44 @@ Cine AI is not a search engine. It's a deeply empathetic AI cinephile that:
 - **Remembers your conversation** for multi-turn refinement
 - **Saves your watchlist** persistently in the browser
 - **Tracks your mood history** so you can revisit past discoveries
+- **Learns your taste over time** — an on-device taste-profile learner builds an
+  evolving model of your favored genres, emotional themes, and eras from every
+  prompt and watchlist save, then biases future picks toward *you*
+
+---
+
+## 🧠 How the Taste Learner Works
+
+Cine AI ships with a lightweight **online preference model** (`src/lib/taste.ts`)
+that "keeps learning" what you like — no GPU, no training job, no external ML
+service, and it can't fail at inference time:
+
+| Signal | Weight | What it teaches the model |
+|--------|--------|---------------------------|
+| You type a prompt | low | your current mood / desired vibe |
+| A pick is shown to you | low | weak genre & mood association |
+| You **save** to your watchlist | high | a strong, explicit taste signal |
+
+Each signal updates a per-user `TasteProfile` (genres, moods, decades) with
+**exponential decay**, so the model gently forgets stale taste and tracks where
+you are *now*. Before each request the learner produces a short natural-language
+summary that is injected into the system prompt, and it **re-ranks** alternate
+picks so the ones closest to your taste surface first. The profile persists in
+`localStorage` and the same logic is exposed server-side at `/api/taste`.
+
+> Why not a literal CNN? Convolutional nets are built for spatial/image data.
+> User taste is a small, sparse, evolving set of categorical signals with very
+> little data per user — an online weighted-feature model is the right tool:
+> it learns from the very first interaction, is fully explainable, and never
+> errors out.
+
+### 🎨 UI / UX
+
+The landing experience uses an interactive **gooey pixel-trail** hero
+(`src/components/ui/gooey-filter.tsx` + `pixel-trail.tsx`) built on shadcn
+structure — hover the hero and gold pixels bloom and melt together via an SVG
+goo filter. The rest of the app is a cinematic dark theme (gold-on-charcoal)
+with Framer Motion transitions.
 
 ---
 
@@ -42,13 +80,13 @@ cp .env.example .env.local
 Edit `.env.local` and add your keys:
 
 ```env
-ANTHROPIC_API_KEY=sk-ant-...          # Required
+GROQ_API_KEY=gsk_...                  # Required (free, fast, reliable)
 NEXT_PUBLIC_TMDB_API_KEY=...          # Optional: for movie posters
 OMDB_API_KEY=...                      # Optional: additional movie data
 ```
 
 **Getting API keys:**
-- **Anthropic**: [console.anthropic.com](https://console.anthropic.com) → API Keys
+- **Groq** (free): [console.groq.com/keys](https://console.groq.com/keys) — runs Llama 3.3 70B, very fast & stable
 - **TMDB** (free): [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
 - **OMDb** (free tier): [omdbapi.com/apikey](https://www.omdbapi.com/apikey.aspx)
 
@@ -69,25 +107,36 @@ cine-ai/
 ├── src/
 │   ├── app/
 │   │   ├── api/
-│   │   │   ├── chat/route.ts        # Claude AI chat endpoint
-│   │   │   └── poster/route.ts      # TMDB poster enrichment
+│   │   │   ├── chat/route.ts        # Groq (Llama 3.3 70B) chat endpoint
+│   │   │   ├── poster/route.ts      # TMDB poster enrichment
+│   │   │   └── taste/route.ts       # Taste-profile learner (server-side)
+│   │   ├── globals.css              # Cinematic dark theme
 │   │   ├── layout.tsx               # Root layout + fonts
 │   │   └── page.tsx                 # Entry point
 │   ├── components/
-│   │   ├── ChatInterface.tsx        # Main chat UI + state
+│   │   ├── ui/
+│   │   │   ├── gooey-filter.tsx     # SVG goo filter (shadcn structure)
+│   │   │   ├── pixel-trail.tsx      # Interactive gooey pixel-trail hero fx
+│   │   │   └── button.tsx           # shadcn-style button
+│   │   ├── hooks/
+│   │   │   └── use-debounced-dimensions.ts
+│   │   ├── ChatInterface.tsx        # Main chat UI + state + learner wiring
 │   │   ├── ChatMessage.tsx          # Individual message renderer
 │   │   ├── MovieCard.tsx            # Cinematic recommendation card
 │   │   ├── WatchlistPanel.tsx       # Slide-out watchlist sidebar
 │   │   ├── MoodHistoryPanel.tsx     # Mood/chat history sidebar
-│   │   ├── WelcomeScreen.tsx        # Initial landing state
+│   │   ├── WelcomeScreen.tsx        # Gooey pixel-trail landing hero
 │   │   └── TypingIndicator.tsx      # Animated AI thinking state
-│   ├── lib/
-│   │   ├── types.ts                 # TypeScript interfaces
-│   │   ├── prompt.ts                # System prompt + mood suggestions
-│   │   ├── tmdb.ts                  # TMDB API utilities
-│   │   └── storage.ts               # localStorage watchlist/history
-│   └── styles/
-│       └── globals.css              # Cinematic dark theme
+│   ├── hooks/
+│   │   └── use-screen-size.ts       # Responsive breakpoint hook
+│   └── lib/
+│       ├── types.ts                 # TypeScript interfaces
+│       ├── prompt.ts                # System prompt + mood suggestions
+│       ├── tmdb.ts                  # TMDB API utilities
+│       ├── taste.ts                 # Online taste-profile learner
+│       ├── storage.ts               # localStorage watchlist/history/taste
+│       └── utils.ts                 # cn() class merge helper
+├── components.json                  # shadcn config
 ├── .env.example                     # Environment variables template
 ├── next.config.js
 ├── tailwind.config.js
@@ -143,7 +192,7 @@ vercel
 ```
 
 Set environment variables in Vercel dashboard:
-- `ANTHROPIC_API_KEY`
+- `GROQ_API_KEY`
 - `NEXT_PUBLIC_TMDB_API_KEY` (optional)
 - `OMDB_API_KEY` (optional)
 
@@ -199,8 +248,9 @@ The `CineResponse` interface in `src/lib/types.ts` defines the JSON structure. M
 | Layer | Tech |
 |-------|------|
 | Frontend | Next.js 14, React 18, TypeScript |
-| Styling | Tailwind CSS, Framer Motion |
-| AI | Anthropic Claude (Sonnet) |
+| Styling | Tailwind CSS, Framer Motion, shadcn structure |
+| AI | Groq — Llama 3.3 70B (free, fast, reliable) |
+| Personalization | On-device online taste-profile learner |
 | Movie Data | TMDB API, OMDb API |
 | Storage | Browser localStorage |
 | Fonts | DM Serif Display + DM Sans (Google Fonts) |
