@@ -94,8 +94,23 @@ export async function POST(req: Request) {
 
     if (!res.ok) {
       const detail = await res.text()
+      // Surface the real reason (auth, bad model, rate limit) so it's debuggable.
+      let reason = detail.slice(0, 300)
+      try {
+        reason = JSON.parse(detail)?.error?.message ?? reason
+      } catch {
+        /* keep raw text */
+      }
+      const hint =
+        res.status === 401
+          ? ' — your GROQ_API_KEY looks invalid or expired. Update .env.local and restart the dev server.'
+          : res.status === 429
+            ? ' — rate limited by Groq, try again in a moment.'
+            : res.status === 400 && /model/i.test(reason)
+              ? ' — the model id may be decommissioned; check console.groq.com/docs/models.'
+              : ''
       return NextResponse.json(
-        { error: 'Upstream model error.', detail: detail.slice(0, 500) },
+        { error: `Groq error (${res.status}): ${reason}${hint}` },
         { status: 502 }
       )
     }
